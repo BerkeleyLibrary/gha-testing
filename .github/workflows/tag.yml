@@ -3,6 +3,11 @@ name: Tag Image
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      image:
+        description: Image to pull from the registry and retag
+        required: true
+        type: string
 
 jobs:
   tag:
@@ -10,6 +15,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Output short SHA
+        run: echo "GITHUB_SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Output Docker repo to be pulled from
+        run: echo "DOCKER_REPO=ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]' >> "$GITHUB_ENV"
+
+      - name: Output Docker image to be pulled
+        run: echo "DOCKER_IMAGE=${DOCKER_REPO}:sha-${GITHUB_SHORT_SHA}" >> "$GITHUB_ENV"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -28,7 +42,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ github.env.DOCKER_IMAGE }}
           tags: |
             type=sha
             type=ref,event=branch
@@ -38,11 +52,5 @@ jobs:
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Retag and push the image
-        uses: docker/build-push-action@v2
-        with:
-          push: true
-          labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=registry,ref=${{ steps.meta.outputs.images }}
-          cache-to: type=inline
+      - name: Pull the image to be retagged
+        run: docker pull ghcr.io/${DOCKER_IMAGE}
