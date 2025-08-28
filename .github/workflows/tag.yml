@@ -44,5 +44,5 @@ jobs:
           push: true
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}
+          cache-from: type=registry,ref=${{ steps.meta.outputs.images }}
           cache-to: type=inline
