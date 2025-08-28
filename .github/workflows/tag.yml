@@ -3,11 +3,6 @@ name: Tag Image
 on:
   workflow_call:
   workflow_dispatch:
-    inputs:
-      image:
-        description: Image to pull from the registry and retag
-        required: true
-        type: string
 
 jobs:
   tag:
