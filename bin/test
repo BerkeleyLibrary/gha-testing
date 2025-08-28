@@ -1,3 +1,4 @@
 #!/bin/sh -e
 
+docker compose up --exit-code-from app
 docker compose run --rm app | grep -q 'Hello from Docker!'
