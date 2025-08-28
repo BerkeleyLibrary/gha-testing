@@ -3,4 +3,3 @@
 services:
   app:
     build: .
-    image: ${DOCKER_APP_IMAGE}
