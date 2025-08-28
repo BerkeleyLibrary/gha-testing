@@ -1,0 +1,36 @@
+name: Docker Build
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  DOCKER_APP_REPOSITORY: ghcr.io/${{ github.repository }}
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug environment
+        run: env | sort
+
+  build:
+    needs:
+      - debug
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          push: false
+          tags: |
+            ${DOCKER_APP_REPOSITORY}:run-${github.run_id}_${github.run_attempt}
