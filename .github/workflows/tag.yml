@@ -15,7 +15,7 @@ jobs:
         run: echo "GITHUB_SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       - name: Output Docker repo to be pulled from
-        run: ` >> "$GITHUB_ENV"
+        run: echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]' | sed 's/^/DOCKER_REPO=/' >> "$GITHUB_ENV"
 
       - name: Output Docker image to be pulled
         run: echo "DOCKER_IMAGE=${DOCKER_REPO}:sha-${GITHUB_SHORT_SHA}" >> "$GITHUB_ENV"
