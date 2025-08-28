@@ -1,0 +1,33 @@
+name: Test Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_command:
+        description: Path to a test script within the repo
+        type: string
+        default: bin/test
+      image_tag:
+        description: Tag of the Docker image to pull and test
+        required: true
+        type: string
+
+env:
+  COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
+  DOCKER_APP_IMAGE: ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
+
+      - name: Run the stack
+        run: docker compose up --detach
+
+      - name: Run the test command
+        run: ${{ inputs.test_command }}
