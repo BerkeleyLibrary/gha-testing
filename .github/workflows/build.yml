@@ -14,6 +14,8 @@ jobs:
   build:
     needs:
       - debug
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -37,3 +39,9 @@ jobs:
         with:
           push: false
           tags: ${{ steps.meta.outputs.tags }}
+
+  test:
+    needs: build
+    uses: ./.github/workflows/test.yml
+    with:
+      image: ${{ needs.build.outputs.tags }}

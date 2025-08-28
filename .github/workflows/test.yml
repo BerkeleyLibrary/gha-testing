@@ -1,20 +1,22 @@
 name: Test Image
 
 on:
+  workflow_call:
+    inputs:
+      image:
+        description: Full ID of the image to be tested
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
-      test_command:
-        description: Path to a test script within the repo
-        type: string
-        default: bin/test
-      image_tag:
-        description: Tag of the Docker image to pull and test
+      image:
+        description: Full ID of the image to be tested
         required: true
         type: string
 
 env:
   COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
-  DOCKER_APP_IMAGE: ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
+  DOCKER_APP_IMAGE: ${{ inputs.image }}
 
 jobs:
   test:
@@ -30,4 +32,4 @@ jobs:
         run: docker compose up --detach
 
       - name: Run the test command
-        run: ${{ inputs.test_command }}
+        run: bin/test
