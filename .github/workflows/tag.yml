@@ -1,21 +1,11 @@
-name: Build Image
+name: Tag Image
 
 on:
   workflow_call:
   workflow_dispatch:
 
 jobs:
-  debug:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Debug environment
-        run: env | sort
-
-  build:
-    needs:
-      - debug
-    outputs:
-      tags: ${{ steps.meta.outputs.tags }}
+  tag:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -34,22 +24,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine Docker image tags
+      - name: Determine long-lived Docker image tags
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          tags: type=sha,suffix=-pre-${{ github.run_id }}_${{ github.run_attempt }}
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{major}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
+      - name: Retag and push the image
+        uses: docker/build-push-action@v2
         with:
           push: true
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
-
-  test:
-    needs: build
-    uses: ./.github/workflows/test.yml
-    with:
-      image: ${{ needs.build.outputs.tags }}
+          cache-from: type=registry,ref=${{ github.repository }}
+          cache-to: type=inline
