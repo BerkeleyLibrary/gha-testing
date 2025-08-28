@@ -28,8 +28,8 @@ jobs:
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v1
 
-      - name: Run the stack
-        run: docker compose up --detach
+      - name: Start the stack
+        run: docker compose up --detach --no-build --pull=always
 
       - name: Run the test command
         run: bin/test
