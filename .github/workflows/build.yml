@@ -105,5 +105,4 @@ jobs:
           push: true
           labels: ${{ steps.branch-meta.outputs.labels }}
           tags: ${{ steps.branch-meta.outputs.tags }}
-          provenance: true
           cache-from: type=registry,ref=${{ needs.build.outputs.build-image }}
