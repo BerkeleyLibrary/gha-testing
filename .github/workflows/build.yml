@@ -45,6 +45,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: false
+          load: true
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
