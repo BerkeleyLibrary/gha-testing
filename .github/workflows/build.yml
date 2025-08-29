@@ -1,6 +1,7 @@
 name: Build / Test / Push
 
 on:
+  push:
   workflow_call:
   workflow_dispatch:
 
@@ -53,10 +54,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: false
-          load: true
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
           provenance: true
+          cache-from: type=gha
+          cache-to: type=gha
 
       - name: Run the tests
         run: bin/test
