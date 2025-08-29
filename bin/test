@@ -1,6 +1,4 @@
 #!/bin/bash -e
 
 docker compose up --detach --no-build
-docker compose exec app rspec \
-  --format html --out "${RUNNER_TEMP}/test-results.html" \
-  --format documentation
+docker compose exec app rspec --format html > "$ARTIFACTS_DIR/test-results.html"
