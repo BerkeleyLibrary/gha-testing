@@ -46,10 +46,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Fetch the sha-based image tag
-        run: >
-          echo $DOCKER_METADATA_OUTPUT_TAGS
-          | grep -m1 ':sha-'
-          | sed 's/^/DOCKER_APP_IMAGE=/' >> $GITHUB_ENV
+        run: echo "$DOCKER_METADATA_OUTPUT_TAGS" | grep -m1 ':sha-' | xargs | sed 's/^/DOCKER_APP_IMAGE=/' >> $GITHUB_ENV
 
       - name: Build the image
         id: build
@@ -61,7 +58,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           provenance: true
           cache-from: type=registry,ref=${{ env.DOCKER_APP_IMAGE }}
-          cache-to: type=inline
 
       - name: Run the tests
         run: bin/test
