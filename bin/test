@@ -1,4 +1,6 @@
-#!/bin/sh -e
+#!/bin/bash -e
 
-docker compose up --exit-code-from app --no-build
-docker compose run --rm app | grep -q 'Hello from Docker!'
+docker compose up --detach --no-build
+docker compose exec app rspec \
+  --format html --out "${RUNNER_TEMP}/test-results.html" \
+  --format documentation

@@ -2,4 +2,7 @@
 
 services:
   app:
+    build: !reset
     image: ${DOCKER_APP_IMAGE}
+    ports: !reset
+    volumes: !reset
