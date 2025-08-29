@@ -5,4 +5,5 @@ services:
     build: !reset
     image: ${DOCKER_APP_IMAGE}
     ports: !reset
-    volumes: !reset
+    volumes: !override
+      - $ARTIFACTS_DIR:/tmp/artifacts

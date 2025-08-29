@@ -1,4 +1,6 @@
 #!/bin/bash -e
 
 docker compose up --detach --no-build
-docker compose exec app rspec --format html > "$ARTIFACTS_DIR/test-results.html"
+docker compose exec app rspec \
+  --format html --out /tmp/artifacts/test-results.html \
+  --format documentation
