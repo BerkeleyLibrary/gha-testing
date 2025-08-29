@@ -1,4 +1,4 @@
-name: Tag Image
+name: Push Release Tags
 
 on:
   workflow_call:

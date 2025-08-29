@@ -1,24 +1,15 @@
-name: Build Image
+name: Build / Test / Push
 
 on:
   workflow_call:
   workflow_dispatch:
 
 env:
+  COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
   DOCKER_METADATA_SET_OUTPUT_ENV: 'true'
 
 jobs:
-  debug:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Debug environment
-        run: env | sort
-
   build:
-    needs:
-      - debug
-    outputs:
-      tags: ${{ steps.meta.outputs.tags }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -33,12 +24,32 @@ jobs:
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v1
 
-      - name: Produce sha-based image tag
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Produce image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          tags: type=sha
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{major}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Fetch the sha-based image tag
+        run: >
+          echo $DOCKER_METADATA_OUTPUT_TAGS
+          | grep -m1 ':sha-'
+          | sed 's/^/DOCKER_APP_IMAGE=/' >> $GITHUB_ENV
 
       - name: Build the image
         id: build
@@ -48,23 +59,9 @@ jobs:
           load: true
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          provenance: true
+          cache-from: type=registry,ref=${{ env.DOCKER_APP_IMAGE }}
+          cache-to: type=inline
 
       - name: Run the tests
         run: bin/test
-        env:
-          COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
-          DOCKER_APP_IMAGE: ${{ env.DOCKER_METADATA_OUTPUT_TAGS }}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push the tested image
-        run: docker push "$DOCKER_APP_IMAGE"
-        env:
-          DOCKER_APP_IMAGE: ${{ steps.build.outputs.images }}
