@@ -1,24 +1,17 @@
 name: Push Release Tags
 
 on:
-  workflow_call:
+  push:
+    tags:
+      - '*'
   workflow_dispatch:
 
 jobs:
-  tag:
+  retag:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Output short SHA
-        run: echo "GITHUB_SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
-
-      - name: Output Docker repo to be pulled from
-        run: echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]' | sed 's/^/DOCKER_REPO=/' >> "$GITHUB_ENV"
-
-      - name: Output Docker image to be pulled
-        run: echo "DOCKER_IMAGE=${DOCKER_REPO}:sha-${GITHUB_SHORT_SHA}" >> "$GITHUB_ENV"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -33,19 +26,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine long-lived Docker image tags
-        id: meta
+      - name: Determine the sha-based image tag to retag
+        id: get-base-image
         uses: docker/metadata-action@v5
         with:
           images: ${{ github.env.DOCKER_IMAGE }}
+          tags: type=sha
+
+      - name: Verify that the image was previously built
+        run: docker pull "$BASE_IMAGE"
+        env:
+          BASE_IMAGE: ${{ steps.get-base-image.outputs.tags }}
+
+      - name: Produce release tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
           tags: |
-            type=sha
-            type=ref,event=branch
             type=ref,event=tag
             type=semver,pattern={{major}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Pull the image to be retagged
-        run: docker pull "${DOCKER_IMAGE}"
+      - name: Retag and push the image
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          provenance: true
+          cache-from: type=registry,ref=${{ steps.get-base-image.outputs.tags }}
