@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     outputs:
-      imageid: ${{ steps.build.outputs.imageid }}
+      image: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -54,7 +54,7 @@ jobs:
     needs:
       - build
     env:
-      DOCKER_APP_IMAGE: ${{ needs.build.outputs.imageid }}
+      DOCKER_APP_IMAGE: ${{ needs.build.outputs.image }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
