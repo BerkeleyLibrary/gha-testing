@@ -30,7 +30,7 @@ jobs:
         id: get-base-image
         uses: docker/metadata-action@v5
         with:
-          images: ${{ github.env.DOCKER_IMAGE }}
+          images: ghcr.io/${{ github.repository }}
           tags: type=sha
 
       - name: Verify that the image was previously built
