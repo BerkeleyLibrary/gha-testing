@@ -1,5 +1,6 @@
 .dockerignore
 .DS_Store
+.env
 .git*
 .gitignore
 docker-compose*
