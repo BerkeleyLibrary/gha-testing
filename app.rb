@@ -23,34 +23,38 @@ get '/' do
   'Hello, world!'
 end
 
-get '/prunables' do
+# Returns all container packages along with their pruning status, i.e. whether they can/can't be pruned and why
+get '/images' do
   packages = github.get('orgs/BerkeleyLibrary/packages', {package_type: :container})
   logger.info "Scanning #{packages.size} packages for prunable images: #{packages.collect(&:name).sort}"
 
-  packages.each do |pkg|
-    logger.info "Determining prunable images for #{pkg.name}"
+  prunables = [].tap do |sofar|
+    packages.each do |pkg|
+      logger.info "Determining prunable images for #{pkg.name}"
 
-    next unless pkg.repository
+      next unless pkg.repository
 
-    permatags = %w(latest edge)
-    permatags += github.branches(pkg.repository.full_name).collect(&:name)
-    permatags += github.tags(pkg.repository.full_name).collect(&:name)
+      permatags = %w(latest edge)
+      permatags += github.branches(pkg.repository.full_name).collect(&:name)
+      permatags += github.tags(pkg.repository.full_name).collect(&:name)
 
-    images = github.get("orgs/#{pkg.owner.login}/packages/#{pkg.package_type}/#{pkg.name}/versions").collect do |image|
-      if has_permatag? image, permatags
-        verdict = :permatagged
-      elsif younger_than? image, 7
-        verdict = :recent
-      else
-        verdict = :prunable
+      github.get("orgs/#{pkg.owner.login}/packages/#{pkg.package_type}/#{pkg.name}/versions").each do |image|
+        if has_permatag? image, permatags
+          pruning_status = :permatagged
+        elsif younger_than? image, 7
+          pruning_status = :recent
+        else
+          pruning_status = :prunable
+        end
+
+        sofar << {
+          image: image.to_attrs,
+          pruning_status: pruning_status,
+          can_be_pruned: pruning_status == :prunable,
+        }
       end
-      # { image:, verdict: }
     end
-
-    json({
-      repo: pkg.repository.full_name,
-      package: pkg.name,
-      images:,
-    })
   end
+
+  json prunables
 end
