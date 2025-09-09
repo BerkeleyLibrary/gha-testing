@@ -3,7 +3,13 @@
 services:
   app:
     build: .
+    env_file:
+      - .env
     ports:
       - 4567:4567
     volumes:
       - ./:/opt/app
+    develop:
+      watch:
+       - action: rebuild
+         path: .
