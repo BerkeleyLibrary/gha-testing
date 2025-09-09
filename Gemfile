@@ -10,4 +10,7 @@ gem "rspec"
 gem "sinatra-contrib", "~> 4.1"
 gem "sinatra"
 
-gem "pry", "~> 0.15.2", :group => :development
+group :development do
+  gem "pry", "~> 0.15.2"
+  gem "pry-doc", "~> 1.6"
+end

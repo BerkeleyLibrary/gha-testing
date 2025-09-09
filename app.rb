@@ -1,5 +1,6 @@
 require 'date'
 require 'octokit'
+require 'faraday'
 require 'sinatra'
 require 'sinatra/json'
 
@@ -8,53 +9,110 @@ configure :development do
   set :server_settings, timeout: 60
 end
 
-def has_permatag?(version, permatags)
-  (version['metadata']['container']['tags'] & permatags).any?
+stack = Faraday::RackBuilder.new do |builder|
+  builder.use Octokit::Middleware::FollowRedirects
+  builder.use Octokit::Response::RaiseError
+  builder.use Octokit::Response::FeedParser
+  builder.response :logger, nil, { headers: true, bodies: true, errors: true } do |logger|
+    logger.filter(/(Authorization: "(token|Bearer) )(\w+)/, '\1[REMOVED]')
+  end
+  builder.adapter Faraday.default_adapter
+end
+Octokit.middleware = stack
+
+module Logging
+  def logger
+    Logging.logger
+  end
+
+  def self.logger
+    @logger ||= Logger.new(STDOUT)
+  end
 end
 
-def younger_than?(version, days_old)
-  cutoff = Time.now - 60*60*24*days_old
-  version['created_at'] > cutoff
-end
+class RegistryPruner
+  include Logging
 
-github = Octokit::Client.new(per_page: 100, auto_paginate: true)
+  attr_reader :github, :org
 
-get '/' do
-  'Hello, world!'
-end
+  def initialize(github: nil, org: 'BerkeleyLibrary')
+    @github = github || Octokit::Client.new(per_page: 100, auto_paginate: true)
+    @org = org
+    @inventory = nil
+  end
 
-# Returns all container packages along with their pruning status, i.e. whether they can/can't be pruned and why
-get '/images' do
-  packages = github.get('orgs/BerkeleyLibrary/packages', {package_type: :container})
-  logger.info "Scanning #{packages.size} packages for prunable images: #{packages.collect(&:name).sort}"
+  def inventory
+    @inventory ||= [].then { refresh_inventory! }
+  end
 
-  prunables = [].tap do |sofar|
-    packages.each do |pkg|
-      logger.info "Determining prunable images for #{pkg.name}"
+  def prune!(days_old = 7)
+    cutoff = Time.now - (60*60*24 * days_old)
 
-      next unless pkg.repository
+    inventory.each do |image|
+      if image[:created_at] > cutoff
+        logger.debug "SKIPPING: Image #{image[:package]}/#{image[:version]} created recently: #{image[:created_at]}"
+        next
+      end
 
-      permatags = %w(latest edge)
-      permatags += github.branches(pkg.repository.full_name).collect(&:name)
-      permatags += github.tags(pkg.repository.full_name).collect(&:name)
+      permatags = image[:tags] & image[:repo_permatags]
+      if permatags.any?
+        logger.debug "SKIPPING: Image #{image[:package]}/#{image[:version]} has permatags: #{permatags.sort.join(', ')}"
+        next
+      end
 
-      github.get("orgs/#{pkg.owner.login}/packages/#{pkg.package_type}/#{pkg.name}/versions").each do |image|
-        if has_permatag? image, permatags
-          pruning_status = :permatagged
-        elsif younger_than? image, 7
-          pruning_status = :recent
+      begin
+        logger.debug("Deleting image: #{image[:url]}")
+        github.delete image[:url], nil
+      rescue Octokit::BadRequest => e
+        logger.error(e)
+        if e.message =~ /cannot be deleted/
+          next
         else
-          pruning_status = :prunable
+          raise
         end
-
-        sofar << {
-          image: image.to_attrs,
-          pruning_status: pruning_status,
-          can_be_pruned: pruning_status == :prunable,
-        }
       end
     end
   end
 
-  json prunables
+  def refresh_inventory!
+    @inventory = [].tap do |images|
+      github.get("orgs/#{org}/packages", { package_type: :container }).each do |pkg|
+        next unless pkg.repository
+
+        repo = pkg.repository.full_name
+        repo_permatags = permatags_for(pkg)
+        next_page = "orgs/#{org}/packages/container/#{pkg.name}/versions"
+
+        loop do
+          github.get(next_page).each do |image|
+            images << {
+              url: "orgs/#{org}/packages/container/#{pkg.name}/versions/#{image.id}",
+              package: pkg.name,
+              version: image.id,
+              created_at: image['created_at'],
+              tags: image['metadata']['container']['tags'],
+              repo:,
+              repo_permatags:,
+            }
+          end
+          next_page = github.last_response.rels[:next]&.href
+          break if next_page.nil?
+        end
+      end
+    end
+  end
+
+  def permatags_for(pkg)
+    %w(latest edge).tap do |permatags|
+      permatags.concat github.branches(pkg.repository.full_name).collect(&:name)
+      permatags.concat github.tags(pkg.repository.full_name).collect(&:name)
+      permatags.sort!
+    end
+  end
+end
+
+get '/images' do
+  pruner = RegistryPruner.new
+  inventory = pruner.inventory
+  json({ inventory: })
 end

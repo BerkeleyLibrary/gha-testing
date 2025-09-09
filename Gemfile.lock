@@ -27,6 +27,9 @@ GEM
     pry (0.15.2)
       coderay (~> 1.1)
       method_source (~> 1.0)
+    pry-doc (1.6.0)
+      pry (~> 0.11)
+      yard (~> 0.9.11)
     public_suffix (6.0.2)
     puma (6.6.1)
       nio4r (~> 2.0)
@@ -74,6 +77,7 @@ GEM
       tilt (~> 2.0)
     tilt (2.6.1)
     uri (1.0.3)
+    yard (0.9.37)
 
 PLATFORMS
   aarch64-linux
@@ -82,6 +86,7 @@ PLATFORMS
 DEPENDENCIES
   octokit (~> 10.0)
   pry (~> 0.15.2)
+  pry-doc (~> 1.6)
   puma
   rack-test
   rackup
