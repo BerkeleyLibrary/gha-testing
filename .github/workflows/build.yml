@@ -48,7 +48,7 @@ jobs:
 
       # Build cache is shared among all builds of the same architecture
       - id: cache-meta
-        name: Docker meta
+        name: Fetch build cache metadata
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
