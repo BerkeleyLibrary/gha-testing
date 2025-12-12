@@ -3,20 +3,31 @@ name: Build / Test / Push
 on:
   push:
     branches:
-      - '*'
+      - '**'
+  workflow_call:
   workflow_dispatch:
+
+env:
+  BUILD_SUFFIX: -build-${{ github.run_id }}_${{ github.run_attempt }}
+  DOCKER_METADATA_SET_OUTPUT_ENV: 'true'
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     outputs:
-      build-image: ${{ steps.build-meta.outputs.tags }}
+      build-image-arm: ${{ steps.gen-output.outputs.image-arm64 }}
+      build-image-x64: ${{ steps.gen-output.outputs.image-x64 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -28,36 +39,104 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Produce the build image tag
-        id: build-meta
+      - id: build-meta
+        name: Docker meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          tags: type=sha,suffix=-build-${{ github.run_id }}_${{ github.run_attempt }}
+          tags: type=sha,suffix=${{ env.BUILD_SUFFIX }}
 
-      - name: Build and push the untested image
+      # Build cache is shared among all builds of the same architecture
+      - id: cache-meta
+        name: Docker meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: type=raw,value=buildcache-${{ runner.arch }}
+
+      - id: get-registry
+        name: Get the sanitized registry name
+        run: |
+          echo "registry=$(echo '${{ steps.build-meta.outputs.tags }}' | cut -f1 -d:)" | tee -a "$GITHUB_OUTPUT"
+
+      - id: set_build_url
+        name: Set BUILD_URL
+        run: |
+          echo "build_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" | tee -a "$GITHUB_OUTPUT"
+
+      - id: build
+        name: Build/push the arch-specific image
         uses: docker/build-push-action@v6
         with:
-          push: true
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            BUILD_TIMESTAMP=${{ github.event.repository.updated_at }}
+            BUILD_URL=${{ steps.set_build_url.outputs.build_url }}
+            GIT_REF_NAME=${{ github.ref_name }}
+            GIT_SHA=${{ github.sha }}
+            GIT_REPOSITORY_URL=${{ github.repositoryUrl }}
+          cache-from: type=registry,ref=${{ steps.cache-meta.outputs.tags }}
+          cache-to: type=registry,ref=${{ steps.cache-meta.outputs.tags }},mode=max
           labels: ${{ steps.build-meta.outputs.labels }}
-          tags: ${{ steps.build-meta.outputs.tags }}
-          provenance: true
-          cache-from: type=gha
-          cache-to: type=gha
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.get-registry.outputs.registry }}
+          outputs: type=image,push-by-digest=true,push=true
 
-  test:
-    runs-on: ubuntu-latest
+      - id: gen-output
+        name: Write arch-specific image digest to outputs
+        run: |
+          echo "image-${RUNNER_ARCH,,}=${{ steps.get-registry.outputs.registry }}@${{ steps.build.outputs.digest }}" | tee -a "$GITHUB_OUTPUT"
+
+  merge:
+    runs-on: ubuntu-24.04
     needs:
       - build
     env:
-      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
-      DOCKER_APP_IMAGE: ${{ needs.build.outputs.build-image }}
+      DOCKER_APP_IMAGE_ARM64: ${{ needs.build.outputs.build-image-arm }}
+      DOCKER_APP_IMAGE_X64: ${{ needs.build.outputs.build-image-x64 }}
+    outputs:
+      build-image: ${{ steps.meta.outputs.tags }}
+      build-image-arm: ${{ needs.build.outputs.build-image-arm }}
+      build-image-x64: ${{ needs.build.outputs.build-image-x64 }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,suffix=-build-${{ github.run_id }}_${{ github.run_attempt }}
+
+      - name: Push the multi-platform image
+        run: |
+          docker buildx imagetools create \
+            --tag "$DOCKER_METADATA_OUTPUT_TAGS" \
+            "$DOCKER_APP_IMAGE_ARM64" "$DOCKER_APP_IMAGE_X64"
+
+  test:
+    runs-on: ubuntu-24.04
+    needs:
+      - merge
+    env:
+      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
+      DOCKER_APP_IMAGE: ${{ needs.merge.outputs.build-image }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v1
@@ -102,13 +181,20 @@ jobs:
           if-no-files-found: error
 
   push:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
-      - build
+      - merge
       - test
+    env:
+      DOCKER_APP_IMAGE: ${{ needs.merge.outputs.build-image }}
+      DOCKER_APP_IMAGE_ARM64: ${{ needs.merge.outputs.build-image-arm }}
+      DOCKER_APP_IMAGE_X64: ${{ needs.merge.outputs.build-image-x64 }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -128,9 +214,6 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Retag and push the image
-        uses: docker/build-push-action@v6
-        with:
-          push: true
-          labels: ${{ steps.branch-meta.outputs.labels }}
-          tags: ${{ steps.branch-meta.outputs.tags }}
-          cache-from: type=registry,ref=${{ needs.build.outputs.build-image }}
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("--tag " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") $DOCKER_APP_IMAGE_ARM64 $DOCKER_APP_IMAGE_X64
