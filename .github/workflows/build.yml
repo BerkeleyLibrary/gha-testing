@@ -40,7 +40,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: build-meta
-        name: Docker meta
+        name: Produce the build image tag
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
@@ -89,7 +89,7 @@ jobs:
           echo "image-${RUNNER_ARCH,,}=${{ steps.get-registry.outputs.registry }}@${{ steps.build.outputs.digest }}" | tee -a "$GITHUB_OUTPUT"
 
   merge:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs:
       - build
     env:
@@ -128,7 +128,7 @@ jobs:
             "$DOCKER_APP_IMAGE_ARM64" "$DOCKER_APP_IMAGE_X64"
 
   test:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs:
       - merge
     env:
